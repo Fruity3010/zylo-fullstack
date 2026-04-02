@@ -1,0 +1,1808 @@
+openapi: 3.0.3
+info:
+  title: Zylo Errand Marketplace API
+  description: |
+    Complete REST API for the Zylo mobile application - An Indrive-style errand marketplace platform.
+
+    ## Features
+    - JWT-based authentication
+    - Errand marketplace with escrow payments
+    - Real-time chat messaging
+    - Negotiation/counter-offer system
+    - Rating and review system
+    - Tier-based fee structure with auto-promotion
+    - Complete wallet system with transaction ledger
+
+    ## Authentication
+    Most endpoints require JWT authentication. Click the **Authorize** button and enter your JWT token.
+
+    ## Testing
+    1. Sign up or login to get a JWT token
+    2. Click **Authorize** and paste the token
+    3. Try out any endpoint using the "Try it out" button
+
+  version: 1.0.0
+  contact:
+    name: Zylo API Support
+    email: support@zylo.app
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: http://localhost:3000
+    description: Development server
+  - url: https://api.zylo.app
+    description: Production server
+
+tags:
+  - name: Authentication
+    description: User authentication and account management
+  - name: Errands
+    description: Errand marketplace operations
+  - name: Payments
+    description: Wallet and payment operations
+  - name: Offers
+    description: Negotiation and counter-offer system
+  - name: Ratings
+    description: User ratings and reviews
+  - name: Fees
+    description: Daily fee calculation and tracking
+  - name: Chat
+    description: Real-time messaging
+
+security:
+  - BearerAuth: []
+
+paths:
+  # ============================================
+  # AUTHENTICATION ENDPOINTS
+  # ============================================
+
+  /api/auth/signup:
+    post:
+      tags:
+        - Authentication
+      summary: Create a new user account
+      description: Register a new user with email and password
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+                - password
+                - full_name
+                - role
+              properties:
+                email:
+                  type: string
+                  format: email
+                  example: john.doe@example.com
+                password:
+                  type: string
+                  format: password
+                  minLength: 6
+                  example: securePassword123
+                full_name:
+                  type: string
+                  example: John Doe
+                role:
+                  type: string
+                  enum: [sender, errander, both]
+                  example: both
+                phone:
+                  type: string
+                  example: "+2348012345678"
+      responses:
+        '201':
+          description: User created successfully
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          user:
+                            $ref: '#/components/schemas/User'
+                          session:
+                            type: object
+                            properties:
+                              access_token:
+                                type: string
+                              refresh_token:
+                                type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/auth/login:
+    post:
+      tags:
+        - Authentication
+      summary: Login to existing account
+      description: Authenticate with email and password to receive JWT token
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+                - password
+              properties:
+                email:
+                  type: string
+                  format: email
+                  example: john.doe@example.com
+                password:
+                  type: string
+                  format: password
+                  example: securePassword123
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          user:
+                            $ref: '#/components/schemas/User'
+                          session:
+                            type: object
+                            properties:
+                              access_token:
+                                type: string
+                              refresh_token:
+                                type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/auth/me:
+    get:
+      tags:
+        - Authentication
+      summary: Get current user
+      description: Retrieve the currently authenticated user's profile
+      responses:
+        '200':
+          description: User profile retrieved
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          user:
+                            $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/auth/logout:
+    post:
+      tags:
+        - Authentication
+      summary: Logout current user
+      description: Invalidate the current user's session
+      responses:
+        '200':
+          description: Logout successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  # ============================================
+  # ERRAND ENDPOINTS
+  # ============================================
+
+  /api/errands:
+    get:
+      tags:
+        - Errands
+      summary: List all errands
+      description: Get a list of errands with optional filters
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [open, assigned, in_progress, completed, cancelled]
+          description: Filter by errand status
+        - name: category
+          in: query
+          schema:
+            type: string
+            enum: [fuel_energy, courier_delivery, office_work, custom]
+          description: Filter by category
+        - name: sender_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+          description: Filter by sender user ID
+        - name: errander_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+          description: Filter by errander user ID
+      responses:
+        '200':
+          description: Errands retrieved successfully
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          errands:
+                            type: array
+                            items:
+                              $ref: '#/components/schemas/Errand'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+    post:
+      tags:
+        - Errands
+      summary: Create a new errand
+      description: Post a new errand to the marketplace
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ErrandCreate'
+      responses:
+        '201':
+          description: Errand created successfully
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          errand:
+                            $ref: '#/components/schemas/Errand'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/errands/{id}:
+    get:
+      tags:
+        - Errands
+      summary: Get errand by ID
+      description: Retrieve detailed information about a specific errand
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Errand retrieved
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          errand:
+                            $ref: '#/components/schemas/Errand'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    patch:
+      tags:
+        - Errands
+      summary: Update errand
+      description: Update an existing errand (owner only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ErrandUpdate'
+      responses:
+        '200':
+          description: Errand updated
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          errand:
+                            $ref: '#/components/schemas/Errand'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      tags:
+        - Errands
+      summary: Delete errand
+      description: Delete an errand (owner only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Errand deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/errands/{id}/apply:
+    post:
+      tags:
+        - Errands
+      summary: Apply to errand
+      description: Apply to complete an errand (holds funds in escrow)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Successfully applied. Funds held in escrow.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          errand:
+                            $ref: '#/components/schemas/Errand'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/errands/{id}/complete:
+    post:
+      tags:
+        - Errands
+      summary: Complete errand
+      description: Mark errand as completed (releases payment to errander)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Errand completed. Payment released.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          errand:
+                            $ref: '#/components/schemas/Errand'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/errands/{id}/cancel:
+    post:
+      tags:
+        - Errands
+      summary: Cancel errand
+      description: Cancel errand (refunds held funds)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+                  example: Changed my mind
+      responses:
+        '200':
+          description: Errand cancelled. Funds refunded.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          errand:
+                            $ref: '#/components/schemas/Errand'
+                          reason:
+                            type: string
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  # ============================================
+  # PAYMENT ENDPOINTS
+  # ============================================
+
+  /api/payments/wallet:
+    get:
+      tags:
+        - Payments
+      summary: Get wallet balance
+      description: Retrieve user's wallet balance and information
+      responses:
+        '200':
+          description: Wallet retrieved
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          wallet:
+                            $ref: '#/components/schemas/Wallet'
+                          balance:
+                            type: object
+                            properties:
+                              available:
+                                type: number
+                                example: 15000
+                              held:
+                                type: number
+                                example: 5000
+                              total:
+                                type: number
+                                example: 20000
+
+  /api/payments/initialize:
+    post:
+      tags:
+        - Payments
+      summary: Initialize payment
+      description: Start a payment to deposit funds to wallet
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - amount
+              properties:
+                amount:
+                  type: number
+                  example: 10000
+                errand_id:
+                  type: string
+                  format: uuid
+      responses:
+        '200':
+          description: Payment initialized
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          authorization_url:
+                            type: string
+                          access_code:
+                            type: string
+                          reference:
+                            type: string
+
+  /api/payments/verify/{reference}:
+    post:
+      tags:
+        - Payments
+      summary: Verify payment
+      description: Verify a payment and credit wallet
+      parameters:
+        - name: reference
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Payment verified and wallet credited
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          verification:
+                            type: object
+                          transaction:
+                            $ref: '#/components/schemas/Transaction'
+
+  /api/payments/webhook:
+    post:
+      tags:
+        - Payments
+      summary: Paystack webhook
+      description: Handle Paystack webhook notifications
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Webhook processed
+
+  /api/payments/transactions:
+    get:
+      tags:
+        - Payments
+      summary: Get transaction history
+      description: Retrieve user's transaction history with filters
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+        - name: type
+          in: query
+          schema:
+            type: string
+            enum: [deposit, withdrawal, hold, release, refund, fee, earning]
+      responses:
+        '200':
+          description: Transactions retrieved
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Transaction'
+
+  /api/payments/withdraw:
+    post:
+      tags:
+        - Payments
+      summary: Request withdrawal
+      description: Request a payout to bank account
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - amount
+                - bank_name
+                - account_number
+                - account_name
+              properties:
+                amount:
+                  type: number
+                  example: 5000
+                bank_name:
+                  type: string
+                  example: GTBank
+                account_number:
+                  type: string
+                  example: "0123456789"
+                account_name:
+                  type: string
+                  example: John Doe
+      responses:
+        '200':
+          description: Payout initiated
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Payout'
+
+  /api/payments/payouts:
+    get:
+      tags:
+        - Payments
+      summary: Get payout history
+      description: Retrieve user's withdrawal history
+      responses:
+        '200':
+          description: Payouts retrieved
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Payout'
+
+  /api/payments/banks:
+    get:
+      tags:
+        - Payments
+      summary: Get list of banks
+      description: Retrieve list of supported Nigerian banks
+      responses:
+        '200':
+          description: Banks retrieved
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            name:
+                              type: string
+                            code:
+                              type: string
+                            id:
+                              type: integer
+
+  # ============================================
+  # OFFER ENDPOINTS
+  # ============================================
+
+  /api/offers/errands/{id}/offers:
+    post:
+      tags:
+        - Offers
+      summary: Create counter-offer
+      description: Make a counter-offer on an errand
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Errand ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - offered_price
+              properties:
+                offered_price:
+                  type: number
+                  example: 4500
+                message:
+                  type: string
+                  example: I can do this for ₦4,500
+      responses:
+        '201':
+          description: Offer created
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/ErrandOffer'
+
+    get:
+      tags:
+        - Offers
+      summary: List errand offers
+      description: Get all offers for an errand
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Offers retrieved
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/ErrandOffer'
+
+  /api/offers/my-offers:
+    get:
+      tags:
+        - Offers
+      summary: Get my offers
+      description: Retrieve all offers made by current user
+      responses:
+        '200':
+          description: My offers retrieved
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/ErrandOffer'
+
+  /api/offers/{id}/accept:
+    patch:
+      tags:
+        - Offers
+      summary: Accept offer
+      description: Accept a counter-offer (sender only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Offer ID
+      responses:
+        '200':
+          description: Offer accepted
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          offer_id:
+                            type: string
+                          errand_id:
+                            type: string
+
+  /api/offers/{id}/reject:
+    patch:
+      tags:
+        - Offers
+      summary: Reject offer
+      description: Reject a counter-offer (sender only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Offer rejected
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          offer_id:
+                            type: string
+
+  /api/offers/{id}:
+    delete:
+      tags:
+        - Offers
+      summary: Withdraw offer
+      description: Withdraw your own offer (errander only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Offer withdrawn
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          offer_id:
+                            type: string
+
+  # ============================================
+  # RATING ENDPOINTS
+  # ============================================
+
+  /api/ratings/errands/{id}/rate:
+    post:
+      tags:
+        - Ratings
+      summary: Rate user
+      description: Rate a user after errand completion
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Errand ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - rating
+              properties:
+                rating:
+                  type: integer
+                  minimum: 1
+                  maximum: 5
+                  example: 5
+                review:
+                  type: string
+                  example: Great experience, very professional!
+      responses:
+        '201':
+          description: Rating submitted
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Rating'
+
+  /api/ratings/users/{id}:
+    get:
+      tags:
+        - Ratings
+      summary: Get user ratings
+      description: Retrieve ratings for a specific user with statistics
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: User ID
+      responses:
+        '200':
+          description: User ratings retrieved
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          ratings:
+                            type: array
+                            items:
+                              $ref: '#/components/schemas/Rating'
+                          statistics:
+                            type: object
+                            properties:
+                              total:
+                                type: integer
+                              average:
+                                type: number
+                              distribution:
+                                type: object
+                                properties:
+                                  "5":
+                                    type: integer
+                                  "4":
+                                    type: integer
+                                  "3":
+                                    type: integer
+                                  "2":
+                                    type: integer
+                                  "1":
+                                    type: integer
+
+  /api/ratings/my-ratings:
+    get:
+      tags:
+        - Ratings
+      summary: Get my given ratings
+      description: Retrieve all ratings given by current user
+      responses:
+        '200':
+          description: My ratings retrieved
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Rating'
+
+  /api/ratings/errands/{id}:
+    get:
+      tags:
+        - Ratings
+      summary: Get errand ratings
+      description: Retrieve all ratings for a specific errand
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Errand ratings retrieved
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Rating'
+
+  /api/ratings/check/{errandId}:
+    get:
+      tags:
+        - Ratings
+      summary: Check rating status
+      description: Check if current user has rated an errand
+      parameters:
+        - name: errandId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Rating status checked
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          has_rated:
+                            type: boolean
+                          rating:
+                            $ref: '#/components/schemas/Rating'
+
+  # ============================================
+  # FEE ENDPOINTS
+  # ============================================
+
+  /api/fees/errands/{id}/calculate:
+    post:
+      tags:
+        - Fees
+      summary: Calculate errand fees
+      description: Calculate fees for an errand based on tier
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Fees calculated
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          errand_id:
+                            type: string
+                          budget:
+                            type: number
+                          user_tier:
+                            type: string
+                          daily_fee:
+                            type: number
+                          days_elapsed:
+                            type: integer
+                          total_fees:
+                            type: number
+                          total_cost:
+                            type: number
+                          start_date:
+                            type: string
+                          end_date:
+                            type: string
+
+  /api/fees/errands/{id}:
+    get:
+      tags:
+        - Fees
+      summary: Get fee breakdown
+      description: Get daily fee breakdown for an errand
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Fee breakdown retrieved
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          fees:
+                            type: array
+                            items:
+                              $ref: '#/components/schemas/DailyFee'
+                          total:
+                            type: number
+                          count:
+                            type: integer
+
+  /api/fees/errands/{id}/accrue:
+    post:
+      tags:
+        - Fees
+      summary: Accrue daily fee
+      description: Manually accrue a daily fee for an errand
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                date:
+                  type: string
+                  format: date
+                  example: "2024-01-15"
+      responses:
+        '201':
+          description: Fee accrued
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/DailyFee'
+
+  /api/fees/summary:
+    get:
+      tags:
+        - Fees
+      summary: Get fee summary
+      description: Get total fee summary for user's errands
+      responses:
+        '200':
+          description: Fee summary retrieved
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          errands:
+                            type: array
+                            items:
+                              type: object
+                          total_fees:
+                            type: number
+                          total_budget:
+                            type: number
+                          total_cost:
+                            type: number
+
+  # ============================================
+  # CHAT ENDPOINTS
+  # ============================================
+
+  /api/chat/conversations:
+    get:
+      tags:
+        - Chat
+      summary: Get conversations
+      description: Retrieve all conversations for current user
+      responses:
+        '200':
+          description: Conversations retrieved
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          type: object
+
+  /api/chat/conversations/{id}/messages:
+    get:
+      tags:
+        - Chat
+      summary: Get messages
+      description: Get messages from a conversation
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Messages retrieved
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          type: object
+
+    post:
+      tags:
+        - Chat
+      summary: Send message
+      description: Send a message in a conversation
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - content
+              properties:
+                content:
+                  type: string
+                  example: Hello, is this still available?
+      responses:
+        '201':
+          description: Message sent
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+
+  /api/chat/messages/{id}/read:
+    put:
+      tags:
+        - Chat
+      summary: Mark message as read
+      description: Mark a message as read
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Message marked as read
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+
+# ============================================
+# COMPONENTS & SCHEMAS
+# ============================================
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Enter your JWT token from login/signup
+
+  schemas:
+    ApiResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        data:
+          type: object
+        error:
+          type: string
+
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        full_name:
+          type: string
+        role:
+          type: string
+          enum: [sender, errander, both]
+        phone:
+          type: string
+        avatar_url:
+          type: string
+        tier:
+          type: string
+          enum: [bronze, silver, gold]
+        completed_errands:
+          type: integer
+        average_rating:
+          type: number
+        kyc_status:
+          type: string
+          enum: [unverified, pending, verified, rejected]
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    Location:
+      type: object
+      required:
+        - latitude
+        - longitude
+        - address
+      properties:
+        latitude:
+          type: number
+          example: 6.5244
+        longitude:
+          type: number
+          example: 3.3792
+        address:
+          type: string
+          example: 123 Main St, Lagos
+
+    Errand:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        sender_id:
+          type: string
+          format: uuid
+        errander_id:
+          type: string
+          format: uuid
+        category:
+          type: string
+          enum: [fuel_energy, courier_delivery, office_work, custom]
+        title:
+          type: string
+        description:
+          type: string
+        budget:
+          type: number
+        pickup_location:
+          $ref: '#/components/schemas/Location'
+        destination_location:
+          $ref: '#/components/schemas/Location'
+        status:
+          type: string
+          enum: [open, assigned, in_progress, completed, cancelled]
+        image_urls:
+          type: array
+          items:
+            type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: string
+          format: date-time
+
+    ErrandCreate:
+      type: object
+      required:
+        - category
+        - title
+        - description
+        - budget
+        - destination_location
+      properties:
+        category:
+          type: string
+          enum: [fuel_energy, courier_delivery, office_work, custom]
+          example: courier_delivery
+        title:
+          type: string
+          example: Deliver package to Ikeja
+        description:
+          type: string
+          example: Need package delivered urgently
+        budget:
+          type: number
+          example: 5000
+        pickup_location:
+          $ref: '#/components/schemas/Location'
+        destination_location:
+          $ref: '#/components/schemas/Location'
+        image_urls:
+          type: array
+          items:
+            type: string
+
+    ErrandUpdate:
+      type: object
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+        budget:
+          type: number
+        status:
+          type: string
+          enum: [open, assigned, in_progress, completed, cancelled]
+
+    ErrandOffer:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        errand_id:
+          type: string
+          format: uuid
+        errander_id:
+          type: string
+          format: uuid
+        offered_price:
+          type: number
+        message:
+          type: string
+        status:
+          type: string
+          enum: [pending, accepted, rejected, withdrawn]
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        responded_at:
+          type: string
+          format: date-time
+
+    Rating:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        errand_id:
+          type: string
+          format: uuid
+        rater_id:
+          type: string
+          format: uuid
+        rated_user_id:
+          type: string
+          format: uuid
+        rating:
+          type: integer
+          minimum: 1
+          maximum: 5
+        review:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    Wallet:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        available_balance:
+          type: number
+        held_balance:
+          type: number
+        total_earned:
+          type: number
+        total_spent:
+          type: number
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    Transaction:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        wallet_id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        type:
+          type: string
+          enum: [deposit, withdrawal, hold, release, refund, fee, earning]
+        amount:
+          type: number
+        balance_after:
+          type: number
+        description:
+          type: string
+        reference:
+          type: string
+        errand_id:
+          type: string
+          format: uuid
+        metadata:
+          type: object
+        created_at:
+          type: string
+          format: date-time
+
+    Payout:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        wallet_id:
+          type: string
+          format: uuid
+        amount:
+          type: number
+        bank_name:
+          type: string
+        account_number:
+          type: string
+        account_name:
+          type: string
+        status:
+          type: string
+          enum: [pending, processing, completed, failed]
+        paystack_reference:
+          type: string
+        failure_reason:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: string
+          format: date-time
+
+    DailyFee:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        errand_id:
+          type: string
+          format: uuid
+        date:
+          type: string
+          format: date
+        fee_amount:
+          type: number
+        created_at:
+          type: string
+          format: date-time
+
+  responses:
+    BadRequest:
+      description: Bad request - invalid input
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/ApiResponse'
+              - type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  message:
+                    type: string
+                    example: Invalid request
+                  error:
+                    type: string
+                    example: Missing required fields
+
+    Unauthorized:
+      description: Unauthorized - authentication required
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/ApiResponse'
+              - type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  message:
+                    type: string
+                    example: Unauthorized
+                  error:
+                    type: string
+                    example: User not authenticated
+
+    Forbidden:
+      description: Forbidden - insufficient permissions
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/ApiResponse'
+              - type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  message:
+                    type: string
+                    example: Forbidden
+                  error:
+                    type: string
+                    example: You do not have permission
+
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/ApiResponse'
+              - type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  message:
+                    type: string
+                    example: Not found
+                  error:
+                    type: string
+                    example: Resource does not exist
+
+    InternalServerError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/ApiResponse'
+              - type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  message:
+                    type: string
+                    example: Internal server error
+                  error:
+                    type: string
+                    example: Something went wrong
